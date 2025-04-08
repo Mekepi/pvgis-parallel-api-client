@@ -30,24 +30,17 @@ def pvgis_5_2_hourlydata(file):
             processes = []
 
             line = inputs.readline()
-            request_number = 1
-            cicle_duration = time.time()
             total_request_delay = 0
             while line:
-
-                if (request_number==31):
-                    request_number = 1
-                    sleep_duration = (1-(time.time()-cicle_duration))
-                    print("Sleeping %f"%(sleep_duration))
-                    time.sleep(sleep_duration)
-                    cicle_duration = time.time()
-                    total_request_delay += sleep_duration
-                
+                cicle_duration = time.time()
                 p = m.Process(target=request_hourlydata, args=[line])
                 p.start()
                 processes.append(p)
                 line = inputs.readline()
-                request_number += 1
+                sleep_duration = 0.03334-(time.time()-cicle_duration)
+                if (sleep_duration>0):
+                    total_request_delay += sleep_duration
+                    time.sleep(sleep_duration)
             
             joining_time = time.time()
             for proc in processes:
