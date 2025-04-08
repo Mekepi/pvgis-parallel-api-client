@@ -113,25 +113,21 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             try: mkdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode))
             except FileExistsError: None
         
-        k:int = 0
-        processes_blocks:list[list[Process]] = []
-        for k in range(1000, len(processes), 1000):
-            processes_blocks.extend([processes[k-1000:k]])
-        processes_blocks.extend([processes[k:]])
 
         sleep_count:int = 0
-        for block in processes_blocks:
-
-            for process in block:
-                process.start()
-                sleep(0.3)
+        i:int = 0
+        while(i<len(processes)):
+            while(i<len(processes) and len([al for al in processes if al.is_alive()])<100):
                 while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
                     sleep(1)
                     sleep_count += 1
-            
-            for process in block:
-                process.join()
-                process.close()
+                processes[i].start()
+                i += 1
+                sleep(0.04)
+        
+        for process in processes:
+            process.join()
+            process.close()
         
         print("  Sleep duration: %.2f"%(0.1*len(processes)+sleep_count))
         print("Request duration: %.2f"%(time()-start_time))
@@ -145,7 +141,7 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             city_timeseries([geocode], compressed, True)
             if (isfile(retry_path)):
                 remove(retry_path)
-        if(not(rt)): print("[%i] execution time: %f" %(geocode, time()-start_time))
+        if(not(rt)): print("[%i] execution time: %.2f" %(geocode, time()-start_time))
 
 def state_timeseries(geocode_or_sigla:list, compressed:bool = True) -> None:
     sts = {
