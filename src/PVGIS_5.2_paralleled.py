@@ -28,23 +28,18 @@ def pvgis_5_2_hourlydata(file):
             print(err)
 
         else:
-            
-            with cf.ProcessPoolExecutor() as executor:
-                
-                total_sleep = 0
-                total_cycle_duration = 0
-                line = inputs.readline()
-                while line:
-                    cicle_duration = time.time()
-                    executor.submit(request_hourlydata, line)
-                    line = inputs.readline()
-                    total_cycle_duration += (time.time()-cicle_duration)
-                    sleep_duration = 0.03334-(time.time()-cicle_duration)
-                    if (sleep_duration>0):
-                        total_sleep += sleep_duration
-                        print("Sleeping %f"%(sleep_duration))
-                        time.sleep(sleep_duration)
 
-        print("total cycles duration: %f\ntotal sleep: %f\nexecution time: %f" %(total_cycle_duration, sleep_duration,time.time()-start_time))
+            total_request_delay = time.time()
+            with cf.ProcessPoolExecutor() as executor:
+                j = 0
+                for i in range(0,len(inputs.readlines()),30):
+                    start_requests = time.time()
+                    print(inputs.readlines()[1])
+                    executor.submit(request_hourlydata, inputs.readlines()[j:i+1])
+                    j=i+1
+                    time.sleep(1-(time.time()-start_requests))
+            total_request_delay = time.time()-total_request_delay
+
+        print("total request delay: %f\nexecution time: %f" %(total_request_delay, time.time()-start_time))
             
 pvgis_5_2_hourlydata("inputs.dat")
