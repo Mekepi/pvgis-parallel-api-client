@@ -57,20 +57,28 @@ def main(file_path:Path) -> None:
     if (not(isdir("%s\\data"%(dirname(abspath(__file__)))))):
         mkdir("%s\\data"%(dirname(abspath(__file__))))
     
-    sleep_count:int = 0
-    for process in processes:
-        process.start()
-        sleep(0.1)
-        while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
-            sleep(1)
-            sleep_count += 1
-    print("  Sleep duration:", 0.1*len(processes)+sleep_count)
+    k:int = 0
+    processes_blocks:list[list[Process]] = []
+    for k in range(750, len(processes), 750):
+            processes_blocks.extend([processes[k-750:k]])
+    processes_blocks.extend([processes[k:]])
 
-    for process in processes:
-        process.join()
-        process.close()
-    print("Request duration:", time()-start_time)
+    sleep_count:int = 0
+    for block in processes_blocks[k-3:k]:
+        for process in block:
+            process.start()
+            sleep(0.1)
+            while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
+                sleep(1)
+                sleep_count += 1
+        
+        for process in block:
+            process.join()
+            process.close()
     
+    print("  Sleep duration:", 0.1*len(block)+sleep_count)
+    print("Request duration:", time()-start_time)
+            
     parent_recvs:list[str] = [con.recv() for con in parent_cons if con.poll()]
     if (parent_recvs):
         retry_path:Path = Path("%s\\retry.dat"%(dirname(abspath(__file__))))
