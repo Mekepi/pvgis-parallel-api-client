@@ -7,6 +7,10 @@ Parallel fetcher for hourly solar radiation data from [PVGIS](https://re.jrc.ec.
 - **Memory-aware throttling** (auto-pauses when RAM <300MB free)  
 - **Gzip compression** (75% size reduction)  
 
+## Prerequisites  
+1. First generate coordinates using [Brazil HexGrid Generator](https://github.com/Mekepi/brazil-hexgrid-generator).  
+2. Place output in `data` before running.  
+
 ## Usage  
 ```python
 from src.PVGIS_5.3_paralleled import city_timeseries
