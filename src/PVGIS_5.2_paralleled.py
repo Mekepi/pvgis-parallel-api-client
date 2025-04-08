@@ -6,6 +6,7 @@ from os import remove, mkdir, listdir
 from os.path import dirname, abspath, isdir, isfile, getsize
 from pathlib import Path
 from psutil import virtual_memory
+import gzip
 
 def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection) -> None:
     line:list = [float(coord.split(",")[1]),float(coord.split(",")[0])]
@@ -44,7 +45,13 @@ def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection)
                 con.send(coord)
     con.close()
 
-def city_timeseries(geocode_list:list[int], rt:bool = False) -> None:
+def compress_file(file_path:Path) -> None:
+    with open(file_path, "rb") as fin:
+        with gzip.open("%s.gz"%(str(file_path)), "wb", 9,) as fout:
+            fout.write(fin.read())
+    remove(file_path)
+
+def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = False) -> None:
     
     for geocode in geocode_list:
         start_time:float = time()
@@ -83,14 +90,14 @@ def city_timeseries(geocode_list:list[int], rt:bool = False) -> None:
         if (not(rt)):
             br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
             stfolder:str = next(f for f in listdir("%s\\%s"%(dirname(abspath(__file__)), br)) if f[0:2] == st_sigla)
-            file_path:Path = Path("%s\\%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder,
+            coords_path:Path = Path("%s\\%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder,
                                                                 next(f for f in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder)) if int(f[1:8]) == geocode)))
-            with open(file_path, "r") as inputs:
+            with open(coords_path, "r") as inputs:
                 lines:list[str] = inputs.readlines()
         
         else:
-            file_path = Path("%s\\retry.dat"%(dirname(abspath(__file__))))
-            with open(file_path, "r") as inputs:
+            coords_path = Path("%s\\retry.dat"%(dirname(abspath(__file__))))
+            with open(coords_path, "r") as inputs:
                 lines = inputs.readlines()
 
         parent_cons:tuple[PipeConnection]
@@ -107,6 +114,7 @@ def city_timeseries(geocode_list:list[int], rt:bool = False) -> None:
         if (not(isdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode)))):
             try: mkdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode))
             except FileExistsError: None
+        city_folder: str = "%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode)
         
         k:int = 0
         processes_blocks:list[list[Process]] = []
@@ -116,6 +124,7 @@ def city_timeseries(geocode_list:list[int], rt:bool = False) -> None:
 
         sleep_count:int = 0
         for block in processes_blocks:
+            start = time()
             for process in block:
                 process.start()
                 sleep(0.1)
@@ -126,6 +135,12 @@ def city_timeseries(geocode_list:list[int], rt:bool = False) -> None:
             for process in block:
                 process.join()
                 process.close()
+            print("request block duration:", time()-start)
+            start = time()
+            if (compressed):
+                list(map(lambda f: Process(target=compress_file, args=[f]).start(), [Path("%s\\%s"%(city_folder, file)) for file in listdir(city_folder) if file.endswith(".csv")]))
+            
+            print("starting compress exec time:", time()-start)
         
         print("  Sleep duration: %.2f"%(0.1*len(processes)+sleep_count))
         print("Request duration: %.2f"%(time()-start_time))
@@ -136,13 +151,13 @@ def city_timeseries(geocode_list:list[int], rt:bool = False) -> None:
             with open(retry_path, "w") as retry:
                 retry.writelines(parent_recvs)
             print("Retrying %i coordinates..."%(len(parent_recvs)))
-            city_timeseries([geocode], True)
+            city_timeseries([geocode], compressed, True)
             if (isfile(retry_path)):
                 remove(retry_path)
         
-        print("[%i] execution time: %f" %(geocode, time()-start_time))
+        if(not(rt)): print("[%i] execution time: %f" %(geocode, time()-start_time))
 
-def state_timeseries(geocode_or_sigla:list) -> None:
+def state_timeseries(geocode_or_sigla:list, compressed:bool = True) -> None:
     sts = {
             12: "AC",
             27: "AL",
@@ -182,34 +197,41 @@ def state_timeseries(geocode_or_sigla:list) -> None:
             br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
             stfolder:str = next(f for f in listdir("%s\\%s"%(dirname(abspath(__file__)), br)) if f[0:2] == st_sigla)
             geocode_list:list[int] = list((int(file[1:8]) for file in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder))))
-            city_timeseries(geocode_list)
+            city_timeseries(geocode_list, compressed)
         else:
             print(gs, "<- inválido")
 
-def brasil_timeseries() -> None:
+def brasil_timeseries(compressed:bool = True) -> None:
     br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
     for stfolder in listdir("%s\\%s"%(dirname(abspath(__file__)), br)):
         geocode_list:list[int] = list((int(file[1:8]) for file in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder))))
-        city_timeseries(geocode_list)
+        city_timeseries(geocode_list, compressed)
 
 def main() -> None:
     """ Todas as funções dependendem do nome da pasta ser Brasil no começo e as subpastas com as siglas dos estados no começo.
         E elas lerão a PRIMEIRA pasta que tenha o começo como Brasil.
         Deixei o número de coordenadas para ter uma ideia do volume de dados que irá baixar.
-        Para o raio de 1,35 km foram 1.123.157. É esperado que sejam 7,123 TiB (7,831 TB). Talvez um pouco menos, desconsiderando coordenadas
+        Para o raio de 1,35 km foram 1.123.131. É esperado que sejam 7,123 TiB (7,831 TB). Talvez um pouco menos, desconsiderando coordenadas
         que caíram no mar.
-        Caso queira aumentar o raio para diminuir o número de coordenadas, apenas lembre de não mexer no começo do nome das pastas e não mexer no nome das arquivor. """
+        Caso queira aumentar o raio para diminuir o número de coordenadas, apenas lembre de não mexer no começo do nome das pastas e não mexer no nome dos arquivos. """
 
     """ A city_timeseries recebe uma lista de geocódigos(municípos -> 7 dígitos) e baixa os municípios em sequência,
-        mas paralelamente todas as coordenadas do município. """
+        mas paralelamente todas as coordenadas do município. 
+        Opcionais:
+            compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir.
+            rt -> NÃO atribua nada. """
     
-    city_timeseries([1200013, 1300029])
+    city_timeseries([1200500])
 
-    """ A state_timeseries recebe uma lista de geocódigo(estado -> 2 primeiros dígitos dos municípios) ou sigla."""
+    """ A state_timeseries recebe uma lista de geocódigo(estado -> 2 primeiros dígitos dos municípios) ou sigla.
+        Opcionais:
+            compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir."""
 
     #state_timeseries(["AC", 13])
 
-    """ A brasil_timeseries é apenas executada. Não Recomendo executá-la ao menos que vá de tempo em tempo acompanhando o download e comprimindo os dados."""
+    """ A brasil_timeseries não recebe argumentos obrigatórios
+        Opcionais:
+            compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir."""
 
     #brasil_timeseries()
 
