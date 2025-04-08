@@ -1,23 +1,21 @@
 import requests
 import multiprocessing as m
-import concurrent.futures as cf
 import time
 
-def request_hourlydata(line):
-    [lat,lon,startyear,endyear] = line.split(",")
-    [lat,lon,startyear,endyear] = [float(lat),float(lon),int(startyear),int(endyear)]
-    response = requests.get("https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=%f&lon=%f&startyear=%i&endyear=%i" %(lat,lon,startyear,endyear))
+def request_hourlydata(line:str):
+    line = line.split(",")
+    line = [float(line[0]),float(line[1]),int(line[2]),int(line[3])]
     try:
-        f = open("hourlydata(%f,%f)[%i,%i].csv"%(lat,lon,startyear,endyear), "x")
+        f = open("hourlydata(%f,%f)[%i,%i].csv"%(line[0],line[1],line[2],line[3]), "x+b")
     except FileExistsError as err:
         print(err)
     else:
-        f.write(response.text)
+        request_start = time.monotonic()
+        f.write(requests.get("https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=%f&lon=%f&startyear=%i&endyear=%i" %(line[0],line[1],line[2],line[3])).content)
+        print("Request", m.current_process().name.rsplit("-")[1] ,"duration:", time.monotonic()-request_start)
         f.close()
 
 def pvgis_5_2_hourlydata(file):
-    
-    if __name__ == '__main__':
 
         start_time = time.time()
 
@@ -28,18 +26,24 @@ def pvgis_5_2_hourlydata(file):
             print(err)
 
         else:
+            processes = list(m.Process(target=request_hourlydata, args=[line]) for line in inputs.readlines())
+            inputs.close()
 
-            total_request_delay = time.time()
-            with cf.ProcessPoolExecutor() as executor:
-                j = 0
-                for i in range(0,len(inputs.readlines()),30):
-                    start_requests = time.time()
-                    print(inputs.readlines()[1])
-                    executor.submit(request_hourlydata, inputs.readlines()[j:i+1])
-                    j=i+1
-                    time.sleep(1-(time.time()-start_requests))
-            total_request_delay = time.time()-total_request_delay
+            total_request_delay = 0.04*len(processes)
+            for process in processes:
+                process.start()
+                time.sleep(0.04)
+            
+            print("  Sleep duration:", total_request_delay)
+            print("   Until joining:", time.time()-start_time)
+            joining_start = time.time()
+            for process in processes:
+                process.join()
+                process.close()
+            print("Joining duration:", time.time()-joining_start)
+            total_request_delay += time.time()-joining_start
 
         print("total request delay: %f\nexecution time: %f" %(total_request_delay, time.time()-start_time))
             
-pvgis_5_2_hourlydata("inputs.dat")
+if __name__ == '__main__':
+    pvgis_5_2_hourlydata("inputs2.dat")
