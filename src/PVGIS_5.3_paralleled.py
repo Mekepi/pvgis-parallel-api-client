@@ -2,7 +2,7 @@ from urllib3 import request
 from multiprocessing import Process, Pipe, active_children
 from multiprocessing.connection import PipeConnection
 from time import time, sleep
-from os import remove, mkdir, listdir
+from os import remove, makedirs, listdir
 from os.path import dirname, abspath, isdir, isfile, getsize
 from pathlib import Path
 from psutil import virtual_memory
@@ -16,7 +16,7 @@ def compress_file(file_path:Path):
 
 def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection, compressed:bool = True) -> None:
     line:list = [float(coord.split(",")[1]),float(coord.split(",")[0])]
-    file_path:Path = Path("%s\\data\\%s\\[%i]\\[%i]timeseries(%.6f,%.6f).csv"%(dirname(abspath(__file__)), st_sigla, geocode, geocode,line[0],line[1]))
+    file_path:Path = Path("%s\\outputs\\%s\\[%i]\\[%i]timeseries(%.6f,%.6f).csv"%(Path(dirname(abspath(__file__))).parent, st_sigla, geocode, geocode,line[0],line[1]))
 
     try:
         file = open(file_path, "xb")
@@ -48,7 +48,7 @@ def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection,
     con.close()
 
 def new_coord(coord:str, geocode:int, st_sigla:str, compressed:bool = True) -> bool:
-    file_path:Path = Path("%s\\data\\%s\\[%i]\\[%i]timeseries(%.6f,%.6f).csv"%(dirname(abspath(__file__)), st_sigla, geocode,
+    file_path:Path = Path("%s\\outputs\\%s\\[%i]\\[%i]timeseries(%.6f,%.6f).csv"%(Path(dirname(abspath(__file__))).parent, st_sigla, geocode,
                                                                                geocode, float(coord.split(',')[1]), float(coord.split(',')[0])))
     compressed_file_path:Path = Path("%s.gz"%(str(file_path)))
 
@@ -68,12 +68,7 @@ def new_coord(coord:str, geocode:int, st_sigla:str, compressed:bool = True) -> b
     
     return True
 
-def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = False) -> None:
-    
-    for geocode in geocode_list:
-        start_time:float = time()
-
-        sts = {
+states = {
             12: "AC",
             27: "AL",
             13: "AM",
@@ -102,17 +97,23 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             28: "SE",
             17: "TO"
         }
-        st_sigla:str = sts[geocode//100000]
+
+def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = False) -> None:
+    
+    for geocode in geocode_list:
+        start_time:float = time()
+        
+        st_sigla:str = states[geocode//100000]
         if (not(rt)):
-            br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
-            stfolder:str = next(f for f in listdir("%s\\%s"%(dirname(abspath(__file__)), br)) if f[0:2] == st_sigla)
-            coords_path:Path = Path("%s\\%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder,
-                                                                next(f for f in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder)) if int(f[1:8]) == geocode)))
+            br:str = next(f for f in listdir("%s\\data"%(Path(dirname(abspath(__file__))).parent)) if f.startswith("Brasil"))
+            stfolder:str = next(f for f in listdir("%s\\data\\%s"%(Path(dirname(abspath(__file__))).parent, br)) if f[0:2] == st_sigla)
+            coords_path:Path = Path("%s\\data\\%s\\%s\\%s"%(Path(dirname(abspath(__file__))).parent, br, stfolder,
+                                                                next(f for f in listdir("%s\\data\\%s\\%s"%(Path(dirname(abspath(__file__))).parent, br, stfolder)) if int(f[1:8]) == geocode)))
             with open(coords_path, "r") as inputs:
                 lines:list[str] = [line for line in inputs.readlines() if(new_coord(line, geocode, st_sigla, compressed))]
             
         else:
-            coords_path = Path("%s\\retry.dat"%(dirname(abspath(__file__))))
+            coords_path = Path("%s\\data\\retry.dat"%(Path(dirname(abspath(__file__))).parent))
             with open(coords_path, "r") as inputs:
                 lines = inputs.readlines()
         
@@ -123,20 +124,12 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             parent_cons, child_cons = zip(*[Pipe(False) for _ in range(len(lines))])
             processes:list[Process] = [Process(target=request_timeseries, args=[line, geocode, st_sigla, con, compressed]) for (line, con) in zip(lines, child_cons)]
 
-            if (not(isdir("%s\\data"%(dirname(abspath(__file__)))))):
-                try: mkdir("%s\\data"%(dirname(abspath(__file__))))
-                except FileExistsError: None
-            if (not(isdir("%s\\data\\%s"%(dirname(abspath(__file__)), st_sigla)))):
-                try: mkdir("%s\\data\\%s"%(dirname(abspath(__file__)), st_sigla))
-                except FileExistsError: None
-            if (not(isdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode)))):
-                try: mkdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode))
-                except FileExistsError: None
+            makedirs("%s\\outputs\\%s\\[%i]"%(Path(dirname(abspath(__file__))).parent, st_sigla, geocode), exist_ok=True)
 
             sleep_count:int = 0
             i:int = 0
             while(i<len(processes)):
-                while(i<len(processes) and len(active_children())<100):
+                while(i<len(processes) and len(active_children())<1000):
                     while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
                         sleep(1)
                         sleep_count += 1
@@ -155,7 +148,7 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
 
             parent_recvs:list[str] = [con.recv() for con in parent_cons if con.poll()]
             if (parent_recvs):
-                retry_path:Path = Path("%s\\retry.dat"%(dirname(abspath(__file__))))
+                retry_path:Path = Path("%s\\data\\retry.dat"%(Path(dirname(abspath(__file__))).parent))
                 with open(retry_path, "w") as retry:
                     retry.writelines(parent_recvs)
                 print("Retrying %i coordinates..."%(len(parent_recvs)))
@@ -167,35 +160,7 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             if(not(rt)): print("[%i] execution time: %.2f" %(geocode, time()-start_time))
 
 def state_timeseries(geocode_or_sigla:list[int|str], compressed:bool = True) -> None:
-    states = {
-            12: "AC",
-            27: "AL",
-            13: "AM",
-            16: "AP",
-            29: "BA",
-            23: "CE",
-            53: "DF",
-            32: "ES",
-            52: "GO",
-            21: "MA",
-            31: "MG",
-            50: "MS",
-            51: "MT",
-            15: "PA",
-            25: "PB",
-            26: "PE",
-            22: "PI",
-            41: "PR",
-            33: "RJ",
-            24: "RN",
-            43: "RS",
-            11: "RO",
-            14: "RR",
-            42: "SC",
-            35: "SP",
-            28: "SE",
-            17: "TO"
-        }
+    
     for gs in geocode_or_sigla:
         if (isinstance(gs, int) and gs in states.keys()):
             st_sigla:str = states[gs]
@@ -206,16 +171,16 @@ def state_timeseries(geocode_or_sigla:list[int|str], compressed:bool = True) -> 
             return
         
         start_time:float = time()
-        br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
-        stfolder:str = next(f for f in listdir("%s\\%s"%(dirname(abspath(__file__)), br)) if f[0:2] == st_sigla)
-        geocode_list:list[int] = list((int(file[1:8]) for file in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder))))
+        br:str = next(f for f in listdir("%s\\data"%(Path(dirname(abspath(__file__))).parent)) if f.startswith("Brasil"))
+        stfolder:str = next(f for f in listdir("%s\\data\\%s"%(Path(dirname(abspath(__file__))).parent, br)) if f[0:2] == st_sigla)
+        geocode_list:list[int] = list((int(file[1:8]) for file in listdir("%s\\data\\%s\\%s"%(Path(dirname(abspath(__file__))).parent, br, stfolder))))
         city_timeseries(geocode_list, compressed)
         print("[%i] %s execution time: %.2f" %(list(states.keys())[list(states.values()).index(st_sigla)], st_sigla, time()-start_time))
 
 def brasil_timeseries(compressed:bool = True) -> None:
     start_time:float = time()
-    br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
-    sigla_list:list[str|int] = [stf[0:2] for stf in listdir("%s\\%s"%(dirname(abspath(__file__)), br))]
+    br:str = next(f for f in listdir("%s\\data"%(Path(dirname(abspath(__file__))).parent)) if f.startswith("Brasil"))
+    sigla_list:list[str|int] = [stf[0:2] for stf in listdir("%s\\data\\%s"%(Path(dirname(abspath(__file__))).parent, br))]
     state_timeseries(sigla_list, compressed)
     print("Brasil execution time: %.2f" %(time()-start_time))
 
@@ -234,7 +199,7 @@ def main() -> None:
             compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir.
             rt -> NÃO atribua nada. """
     
-    city_timeseries([3501608])
+    city_timeseries([3550308])
 
     """ A state_timeseries recebe uma lista de geocódigos(estado -> 2 primeiros dígitos dos municípios) ou siglas.
         Opcionais:
