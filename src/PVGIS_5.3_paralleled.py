@@ -129,7 +129,7 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             sleep_count:int = 0
             i:int = 0
             while(i<len(processes)):
-                while(i<len(processes) and len(active_children())<1000):
+                while(i<len(processes) and len(active_children())<100):
                     while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
                         sleep(1)
                         sleep_count += 1
