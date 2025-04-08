@@ -1,0 +1,55 @@
+# ---------------------------
+# Python
+# ---------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+*.ipynb_checkpoints
+.python-version
+venv/
+env/
+.venv/
+pip-selfcheck.json
+
+# ---------------------------
+# Data & Outputs
+# ---------------------------
+/data/raw/**           # Exclude raw coordinate inputs (keep structure)
+/data/processed/**     # Exclude downloaded PVGIS timeseries
+!data/raw/.gitkeep     # Preserve folder structure
+!data/processed/.gitkeep
+/outputs/              # Exclude any runtime outputs
+/retry.dat             # Temporary retry file
+
+# ---------------------------
+# Compression artifacts
+# ---------------------------
+*.gz                   # Exclude compressed outputs (but keep source CSV)
+*.zip
+*.tar
+
+# ---------------------------
+# IDE & Editor
+# ---------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# ---------------------------
+# System & Misc
+# ---------------------------
+.DS_Store
+Thumbs.db
+*.log
+*.sqlite3
+
+# ---------------------------
+# Environment files
+# ---------------------------
+.env
+*.env
+secrets.ini
+config.json
