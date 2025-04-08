@@ -1,5 +1,5 @@
 from urllib3 import request
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, active_children
 from multiprocessing.connection import PipeConnection
 from time import time, sleep
 from os import remove, mkdir, listdir
@@ -25,7 +25,7 @@ def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection,
         con.send(coord)
     else: 
         try:
-            file.write(request("GET","https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=%.6f&lon=%.6f&components=1" %(line[0],line[1]),preload_content=False,retries=False,timeout=None).data)
+            file.write(request("GET","https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=%.6f&lon=%.6f&components=1" %(line[0],line[1]),preload_content=False,retries=False,timeout=None).data)
         except Exception as err:
             file.close()
             remove(file_path)
@@ -120,8 +120,8 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
         if(lines):
             parent_cons:tuple[PipeConnection]
             child_cons:tuple[PipeConnection]
-            parent_cons, child_cons = zip(*map(lambda _: Pipe(False), range(len(lines))))
-            processes:list[Process] = list(map(lambda line, con: Process(target=request_timeseries, args=[line,geocode,st_sigla,con, compressed]), lines, child_cons))
+            parent_cons, child_cons = zip(*[Pipe(False) for _ in range(len(lines))])
+            processes:list[Process] = [Process(target=request_timeseries, args=[line, geocode, st_sigla, con, compressed]) for (line, con) in zip(lines, child_cons)]
 
             if (not(isdir("%s\\data"%(dirname(abspath(__file__)))))):
                 try: mkdir("%s\\data"%(dirname(abspath(__file__))))
@@ -136,7 +136,7 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             sleep_count:int = 0
             i:int = 0
             while(i<len(processes)):
-                while(i<len(processes) and len([al for al in processes if al.is_alive()])<100):
+                while(i<len(processes) and len(active_children())<100):
                     while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
                         sleep(1)
                         sleep_count += 1
@@ -201,16 +201,16 @@ def state_timeseries(geocode_or_sigla:list[int|str], compressed:bool = True) -> 
             st_sigla:str = states[gs]
         elif (isinstance(gs, str) and gs in states.values()):
             st_sigla = gs
-        
-        if (st_sigla):
-            start_time:float = time()
-            br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
-            stfolder:str = next(f for f in listdir("%s\\%s"%(dirname(abspath(__file__)), br)) if f[0:2] == st_sigla)
-            geocode_list:list[int] = list((int(file[1:8]) for file in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder))))
-            city_timeseries(geocode_list, compressed)
-            print("[%i] %s execution time: %.2f" %(list(states.keys())[list(states.values()).index(st_sigla)], st_sigla, time()-start_time))
         else:
             print(gs, "<- inválido")
+            return
+        
+        start_time:float = time()
+        br:str = next(f for f in listdir("%s"%(dirname(abspath(__file__)))) if f.startswith("Brasil"))
+        stfolder:str = next(f for f in listdir("%s\\%s"%(dirname(abspath(__file__)), br)) if f[0:2] == st_sigla)
+        geocode_list:list[int] = list((int(file[1:8]) for file in listdir("%s\\%s\\%s"%(dirname(abspath(__file__)), br, stfolder))))
+        city_timeseries(geocode_list, compressed)
+        print("[%i] %s execution time: %.2f" %(list(states.keys())[list(states.values()).index(st_sigla)], st_sigla, time()-start_time))
 
 def brasil_timeseries(compressed:bool = True) -> None:
     start_time:float = time()
@@ -234,13 +234,13 @@ def main() -> None:
             compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir.
             rt -> NÃO atribua nada. """
     
-    #city_timeseries([4300406])
+    city_timeseries([3501608])
 
     """ A state_timeseries recebe uma lista de geocódigos(estado -> 2 primeiros dígitos dos municípios) ou siglas.
         Opcionais:
             compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir."""
 
-    state_timeseries(["RR"])
+    #state_timeseries(["RR"])
 
     """ A brasil_timeseries não recebe argumentos obrigatórios
         Opcionais:
