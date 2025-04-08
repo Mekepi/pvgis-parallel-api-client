@@ -1,0 +1,4 @@
+# Core
+urllib3>=1.26.0  # HTTP client
+numpy>=1.21.0    # Coordinate processing
+psutil>=5.9.0    # Memory monitoring
