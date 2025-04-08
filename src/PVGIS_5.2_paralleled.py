@@ -1,27 +1,28 @@
-import requests
-import multiprocessing as m
-import numpy as np
-import time
+from urllib3 import request
+from multiprocessing import Process#, current_process
+from time import time, sleep#, monotonic
+from  os.path import dirname, abspath
 
-def request_hourlydata(line):
-    [lat,lon,startyear,endyear] = line.split(",")
-    [lat,lon,startyear,endyear] = [float(lat),float(lon),int(startyear),int(endyear)]
-    request_start = time.monotonic()
-    response = requests.get("https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=%f&lon=%f&startyear=%i&endyear=%i" %(lat,lon,startyear,endyear))
-    print("Request duration:", time.monotonic()-request_start)
+def request_hourlydata(line:list):
+    line = [float(line[0]),float(line[1]),int(line[2]),int(line[3])]
     try:
-        f = open("hourlydata(%f,%f)[%i,%i].csv"%(lat,lon,startyear,endyear), "x")
+        directory = dirname(abspath(__file__))
+        f = open("%s\\data\\hourlydata(%f,%f)[%i,%i].csv"%(directory,line[0],line[1],line[2],line[3]), "x+b")
     except FileExistsError as err:
         print(err)
     else:
-        f.write(response.text)
+        #request_start = monotonic()
+        while (len(open("%s\\data\\hourlydata(%f,%f)[%i,%i].csv"%(directory,line[0],line[1],line[2],line[3]), "r").readlines())<50):
+            f.truncate(0)
+            f.write(request("GET","https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?lat=%f&lon=%f&startyear=%i&endyear=%i" %(line[0],line[1],line[2],line[3]),preload_content=False,timeout=None).data)
+        #print("Request", current_process().name.rsplit("-")[1] ,"duration:", monotonic()-request_start)
         f.close()
+        #if (open("%s\\data\\hourlydata(%f,%f)[%i,%i].csv"%(directory,line[0],line[1],line[2],line[3]), "r").readlines()<50):
 
-def pvgis_5_2_hourlydata(file):
-    
-    if __name__ == '__main__':
 
-        start_time = time.time()
+def main(file):
+
+        start_time = time()
 
         try:
             inputs = open(file, "r")
@@ -30,34 +31,24 @@ def pvgis_5_2_hourlydata(file):
             print(err)
 
         else:
-            v_process = np.vectorize(lambda line: m.Process(target=request_hourlydata, args=[line]), [type(m.Process())])
-            coords = inputs.readlines()
-            processes = np.array_split(np.array(v_process(np.array([coords])))[0], np.ceil(len(coords)/m.cpu_count()))
-            #print(processes)
+            processes = list(Process(target=request_hourlydata, args=[line.split(",")]) for line in inputs.readlines())
+            inputs.close()
 
-            total_request_delay = 0
-            joining_duration = 0
-            chunk_rest = m.cpu_count()/30
-            for processes_chunk in processes:
-                sleep_duration = time.time()
-                np.vectorize(lambda process: process.start(),otypes=[type(None)])(processes_chunk)
-                """ joining_start =  time.time()
-                np.vectorize(lambda process: process.join(),otypes=[type(None)])(processes_chunk)
-                joining_duration += time.time()-joining_start """
-                sleep_duration = chunk_rest-(time.time()-sleep_duration)
-                if (sleep_duration>0): 
-                    time.sleep(sleep_duration)
-                    total_request_delay += sleep_duration
-            print("  Sleep duration:", total_request_delay)
-
-            joining_duration =  time.time()
-            for process_chunk in processes:
-                for process in process_chunk:
-                    process.join()
-            joining_duration = time.time()-joining_duration
-            print("Joining duration:", joining_duration)
-            total_request_delay += joining_duration
-
-        print("total request delay: %f\nexecution time: %f" %(total_request_delay, time.time()-start_time))
+            total_request_delay = 0.03334*len(processes)
+            for process in processes:
+                process.start()
+                sleep(0.03334)
             
-pvgis_5_2_hourlydata("inputs2.dat")
+            print("  Sleep duration:", total_request_delay)
+            print("   Until joining:", time()-start_time)
+            joining_start = time()
+            for process in processes:
+                process.join()
+                process.close()
+            #print("Joining duration:", time()-joining_start)
+            total_request_delay += time()-joining_start
+
+        print("total request delay: %f\nexecution time: %f" %(total_request_delay, time()-start_time))
+            
+if __name__ == '__main__':
+    main("ES.dat")
