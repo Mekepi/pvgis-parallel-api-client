@@ -1,5 +1,6 @@
 import requests
 import multiprocessing as m
+import concurrent.futures as cf
 import time
 
 def request_hourlydata(line):
@@ -27,26 +28,23 @@ def pvgis_5_2_hourlydata(file):
             print(err)
 
         else:
-            processes = []
-
-            line = inputs.readline()
-            total_request_delay = 0
-            while line:
-                cicle_duration = time.time()
-                p = m.Process(target=request_hourlydata, args=[line])
-                p.start()
-                processes.append(p)
-                line = inputs.readline()
-                sleep_duration = 0.03334-(time.time()-cicle_duration)
-                if (sleep_duration>0):
-                    total_request_delay += sleep_duration
-                    time.sleep(sleep_duration)
             
-            joining_time = time.time()
-            for proc in processes:
-                proc.join()
-            total_request_delay += time.time()-joining_time
+            with cf.ProcessPoolExecutor() as executor:
+                
+                total_sleep = 0
+                total_cycle_duration = 0
+                line = inputs.readline()
+                while line:
+                    cicle_duration = time.time()
+                    executor.submit(request_hourlydata, line)
+                    line = inputs.readline()
+                    total_cycle_duration += (time.time()-cicle_duration)
+                    sleep_duration = 0.03334-(time.time()-cicle_duration)
+                    if (sleep_duration>0):
+                        total_sleep += sleep_duration
+                        print("Sleeping %f"%(sleep_duration))
+                        time.sleep(sleep_duration)
 
-        print("total request delay: %f\nexecution time: %f" %(total_request_delay, time.time()-start_time))
+        print("total cycles duration: %f\ntotal sleep: %f\nexecution time: %f" %(total_cycle_duration, sleep_duration,time.time()-start_time))
             
 pvgis_5_2_hourlydata("inputs.dat")
