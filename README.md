@@ -1,4 +1,4 @@
-# PVGIS Solar Radiation Parallel API Client  
+# PVGIS Parallel API Client  
 
 Parallel fetcher for hourly solar radiation data from [PVGIS](https://re.jrc.ec.europa.eu/pvg_tools/en/#HR).
 
@@ -9,5 +9,5 @@ Parallel fetcher for hourly solar radiation data from [PVGIS](https://re.jrc.ec.
 
 ## Usage  
 ```python
-from src.api_client import city_timeseries
+from src.PVGIS_5.3_paralleled import city_timeseries
 city_timeseries([3304557])  # Rio de Janeiro
