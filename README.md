@@ -1,9 +1,9 @@
 # PVGIS Parallel API Client  
 
-Parallel fetcher for hourly solar radiation data from [PVGIS](https://re.jrc.ec.europa.eu/pvg_tools/en/#HR).
+Parallel fetcher for hourly solar radiation of Brazilian cities from [PVGIS](https://re.jrc.ec.europa.eu/pvg_tools/en/#HR).
 
 ## Features  
-- **Parallel processing** (100+ concurrent requests)  
+- **Parallel processing** (100 concurrent requests)  
 - **Memory-aware throttling** (auto-pauses when RAM <300MB free)  
 - **Gzip compression** (75% size reduction)  
 
