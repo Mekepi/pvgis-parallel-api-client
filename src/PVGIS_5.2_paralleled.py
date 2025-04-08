@@ -6,9 +6,9 @@ from os import remove, mkdir, listdir
 from os.path import dirname, abspath, isdir, isfile, getsize
 from pathlib import Path
 from psutil import virtual_memory
-import gzip
+from gzip import open as gsopen
 
-def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection) -> None:
+def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection, compressed:bool = True) -> None:
     line:list = [float(coord.split(",")[1]),float(coord.split(",")[0])]
     file_path:Path = Path("%s\\data\\%s\\[%i]\\[%i]timeseries(%.6f,%.6f).csv"%(dirname(abspath(__file__)), st_sigla, geocode, geocode,line[0],line[1]))
 
@@ -35,21 +35,19 @@ def request_timeseries(coord:str, geocode:int, st_sigla:str, con:PipeConnection)
             file.close()
             with open(file_path, "r") as f:
                 l:str = f.readline()
-            b:bool = (
-                      l.startswith("Latitude (decimal degrees):") or
-                      l.startswith('{"message":"Location over the sea. Please, select another location"') or
-                      l.startswith('{"message":"Internal Server Error","status":500}')
-                     )
-            if (not(b)):
+            if (l.startswith("Latitude (decimal degrees):")):
+                if (compressed):
+                    with open(file_path, "rb") as fin:
+                        with gsopen("%s.gz"%(str(file_path)), "wb", 9,) as fout:
+                            fout.write(fin.read())
+                    remove(file_path)
+            elif (l.startswith('{"message":"Location over the sea. Please, select another location"') or
+                  l.startswith('{"message":"Internal Server Error","status":500}')):
+                None
+            else:
                 remove(file_path)
                 con.send(coord)
     con.close()
-
-def compress_file(file_path:Path) -> None:
-    with open(file_path, "rb") as fin:
-        with gzip.open("%s.gz"%(str(file_path)), "wb", 9,) as fout:
-            fout.write(fin.read())
-    remove(file_path)
 
 def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = False) -> None:
     
@@ -103,7 +101,7 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
         parent_cons:tuple[PipeConnection]
         child_cons:tuple[PipeConnection]
         parent_cons, child_cons = zip(*map(lambda _: Pipe(False), range(len(lines))))
-        processes:list[Process] = list(map(lambda line, con: Process(target=request_timeseries, args=[line,geocode,st_sigla,con]), lines, child_cons))
+        processes:list[Process] = list(map(lambda line, con: Process(target=request_timeseries, args=[line,geocode,st_sigla,con, compressed]), lines, child_cons))
         
         if (not(isdir("%s\\data"%(dirname(abspath(__file__)))))):
             try: mkdir("%s\\data"%(dirname(abspath(__file__))))
@@ -114,20 +112,19 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
         if (not(isdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode)))):
             try: mkdir("%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode))
             except FileExistsError: None
-        city_folder: str = "%s\\data\\%s\\[%i]"%(dirname(abspath(__file__)), st_sigla, geocode)
         
         k:int = 0
         processes_blocks:list[list[Process]] = []
-        for k in range(660, len(processes), 660):
-                processes_blocks.extend([processes[k-660:k]])
+        for k in range(1000, len(processes), 1000):
+            processes_blocks.extend([processes[k-1000:k]])
         processes_blocks.extend([processes[k:]])
 
         sleep_count:int = 0
         for block in processes_blocks:
-            start = time()
+
             for process in block:
                 process.start()
-                sleep(0.1)
+                sleep(0.3)
                 while ((virtual_memory()[0]-virtual_memory()[3])/(1024**2)<311):
                     sleep(1)
                     sleep_count += 1
@@ -135,12 +132,6 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             for process in block:
                 process.join()
                 process.close()
-            print("request block duration:", time()-start)
-            start = time()
-            if (compressed):
-                list(map(lambda f: Process(target=compress_file, args=[f]).start(), [Path("%s\\%s"%(city_folder, file)) for file in listdir(city_folder) if file.endswith(".csv")]))
-            
-            print("starting compress exec time:", time()-start)
         
         print("  Sleep duration: %.2f"%(0.1*len(processes)+sleep_count))
         print("Request duration: %.2f"%(time()-start_time))
@@ -154,7 +145,6 @@ def city_timeseries(geocode_list:list[int], compressed:bool = True, rt:bool = Fa
             city_timeseries([geocode], compressed, True)
             if (isfile(retry_path)):
                 remove(retry_path)
-        
         if(not(rt)): print("[%i] execution time: %f" %(geocode, time()-start_time))
 
 def state_timeseries(geocode_or_sigla:list, compressed:bool = True) -> None:
@@ -221,7 +211,7 @@ def main() -> None:
             compressed -> booleano que dita se irá comprimir os arquivos ou não. Por padrão, irá comprimir.
             rt -> NÃO atribua nada. """
     
-    city_timeseries([1200500])
+    city_timeseries([4300406])
 
     """ A state_timeseries recebe uma lista de geocódigo(estado -> 2 primeiros dígitos dos municípios) ou sigla.
         Opcionais:
