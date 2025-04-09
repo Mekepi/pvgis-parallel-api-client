@@ -1,4 +1,5 @@
 # PVGIS Parallel API Client  
+![solar radiation](<solar_radiation.png>)
 
 Parallel fetcher for hourly solar radiation of Brazilian cities from [PVGIS](https://re.jrc.ec.europa.eu/pvg_tools/en/#HR).
 
